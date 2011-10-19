@@ -1,0 +1,18 @@
+General:
+1.   Make a call.                {call   +256772344681}
+2.   Month                       {month  comment}
+3.   Day                         {day    comment}
+4.   Year                        {year   comment}
+5.   Number                      {number comment}
+6.   Text                        {text n comment}
+7.   Boolean                     {bool   comment}
+8.   Go to URL                   {url    http://1st.ug/}
+9.   Send for URL callback       {exec   http://1st.ug/etc/contentment/cb.cgi}
+10.  Literal                     LITERAL
+
+Special:
+1.  Update                       {update}
+2.  Cancel                       {exit}
+
+Reserved:
+1.   Date                        {date comment}
