@@ -16,3 +16,7 @@ Special:
 
 Reserved:
 1.   Date                        {date comment}
+
+To add:
+Pending messages to be displayed.
+Merge PerMinute into app opcodes.
