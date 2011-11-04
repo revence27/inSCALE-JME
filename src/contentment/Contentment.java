@@ -481,6 +481,34 @@ class CPProgram implements CommandListener
                     commandAction(c, d);
                     return;
                 }
+                else if(opc.equals("vhtcode"))
+                {
+                    if(! StoreManager.exists("vhtcode"))
+                    {
+                        Alert alt = new Alert("VHT Code", "First record your VHT code", null, AlertType.ERROR);
+                        ISCodePage vhter = new ISCodePage(mama, d);
+                        Display.getDisplay(mama).setCurrent(alt, vhter);
+                        disp.deleteAll();
+                        disp.append("Press OK to continue.");
+                        return;
+                    }
+                    collector = new StringCollector()
+                    {
+                        public String collect()
+                        {
+                            try
+                            {
+                                return StoreManager.read("vhtcode");
+                            }
+                            catch(RecordStoreException rse)
+                            {
+                                return "UNKNOWN";
+                            }
+                        }
+                    };
+                    ++notI;
+                    commandAction(c, d);
+                }
                 else if(opc.equals("update"))
                 {
                     String dft = "Running system update in the background.";
@@ -798,7 +826,9 @@ class CPUpdaterApp extends CPApplication
     {
         super(new CPPublisher(m, "inSCALE Project", "Core App"),
               (empty ? "Install Questionnaire" : "Update Questionnaire"),
-              (empty ? "Welcome to inSCALE. Run this to load the questionnaire." : "Get the latest questionnaires."),
+              (empty ? "Welcome to inSCALE. Run this to load the questionnaire."
+                     : "Get the latest questionnaires.") +
+                     " Current version: " + m.getAppProperty("MIDlet-Jar-SHA1"),
               "{update}{exit}");
     }
 }
@@ -872,20 +902,21 @@ class CPServices extends Vector
             return ans;
         }
         catch(RecordStoreException _) {}
-        return "fresh";
+        return "0";
     }
 
     public void runUpdate(MIDlet m)
     {
         try
         {
-            String vsn = m.getAppProperty("MIDlet-Version");
-            String u = "http://detamble.com/blogs/inscale/update.cgi?version=" + (vsn == null ? "1.0" : vsn) + "&status=" + dbVersion() + "&client=inscale";
+            String vsn = m.getAppProperty("MIDlet-Jar-SHA1");
+            //  String u = "http://inscale.1st.ug/system/get_latest/inscale/" + (vsn == null ? "fresh" : vsn) + "/" + dbVersion();
+            String u = "http://208.86.227.216:3000/system/get_latest/inscale/" + (vsn == null ? "fresh" : vsn) + "/" + dbVersion();
             HttpConnection ucon = (HttpConnection) Connector.open(u);
             InputStream inlet = ucon.openInputStream();
             if(ucon.getResponseCode() != 200)
             {
-                Alert sht = new Alert("HTTP Error " + Integer.toString(ucon.getResponseCode()), "Is your Internet connection working well?", null, AlertType.ERROR);
+                Alert sht = new Alert("HTTP Error " + Integer.toString(ucon.getResponseCode()), "Could not load '" + u + "'.\nIs your Internet connection working well?", null, AlertType.ERROR);
                 Display.getDisplay(m).setCurrent(sht,
                         Display.getDisplay(m).getCurrent());
                 return;
@@ -903,7 +934,7 @@ class CPServices extends Vector
             }
             else if(rsp.substring(0, 6).equals("UPDATE"))
             {
-                Alert alw = new Alert("Updating", "There is a new version of the inSCALE cliet! Accept the update. Thank you!", null, AlertType.INFO);
+                Alert alw = new Alert("Update to '" + vsn + "'", "There is a new version of the inSCALE cliet! Accept the update. Thank you!", null, AlertType.INFO);
                 Display.getDisplay(m).setCurrent(alw, Display.getDisplay(m).getCurrent());
                 m.platformRequest(rsp.substring(1 + rsp.indexOf(0)));
             }
@@ -1030,10 +1061,57 @@ class CPDescriptionPage extends Form implements CommandListener
     }
 }
 
+class ISCodePage extends Form implements CommandListener
+{
+    private MIDlet mama;
+    private Displayable prev;
+    private Command cmd;
+    private TextField vhtc;
+
+    public ISCodePage(MIDlet m, Displayable p)
+    {
+        super("Enter Your VHT Code");
+        String ans = null;
+        try
+        {
+            ans = StoreManager.read("vhtcode");
+        }
+        catch(RecordStoreException rse) {}
+        if(ans == null) ans = "";
+        mama = m;
+        prev = p;
+        vhtc = new TextField("VHT Code", ans, 20, TextField.ANY);
+        cmd  = new Command("Save Code", Command.OK, 0);
+        setCommandListener(this);
+        append(vhtc);
+        addCommand(cmd);
+    }
+
+    public void commandAction(Command c, Displayable d)
+    {
+        if(c == cmd)
+        {
+            if(vhtc.size() < 1)
+            {
+                Alert alt = new Alert("No Code?", "Please enter your VHT code.", null, AlertType.ERROR);
+                Display.getDisplay(mama).setCurrent(alt, d);
+                return;
+            }
+            try
+            {
+                StoreManager.write("vhtcode", vhtc.getString());
+            }
+            catch(RecordStoreException rse) {}
+            Alert alt = new Alert("Stored", "Your VHT code has been saved as: " + vhtc.getString(), null, AlertType.CONFIRMATION);
+            Display.getDisplay(mama).setCurrent(alt, prev);
+        }
+    }
+}
+
 class CPFrontPage extends List implements CommandListener
 {
     private CPServices srv;
-    private Command quit, desc, updt;
+    private Command quit, desc, code, perm;
     private MIDlet mama;
     private Runnable updater;
     private FaultHandler onfault;
@@ -1042,7 +1120,9 @@ class CPFrontPage extends List implements CommandListener
         super(tt, Choice.EXCLUSIVE | Choice.IMPLICIT | Choice.TEXT_WRAP_OFF);
         srv     = s;
         quit    = new Command("Quit", Command.EXIT, 0);
-        desc    = new Command("Describe", Command.HELP, 5);
+        desc    = new Command("Describe", Command.HELP, 1);
+        code    = new Command("VHT Details", Command.OK, 2);
+        perm    = new Command("Measure", Command.OK, 3);
         mama    = m;
         final List meself = this;
         updater = new Runnable()
@@ -1067,6 +1147,8 @@ class CPFrontPage extends List implements CommandListener
         setCommandListener(this);
         addCommand(desc);
         addCommand(quit);
+        addCommand(code);
+        addCommand(perm);
     }
 
     void listApps()
@@ -1080,6 +1162,16 @@ class CPFrontPage extends List implements CommandListener
     {
         if(c == quit)
             mama.notifyDestroyed();
+        else if(c == code)
+        {
+            ISCodePage isc = new ISCodePage(mama, d);
+            Display.getDisplay(mama).setCurrent(isc);
+        }
+        else if(c == perm)
+        {
+            InitialPage init = new InitialPage(mama, this);
+            Display.getDisplay(mama).setCurrent(init);
+        }
         else if(c == desc)
         {
             CPDescriptionPage des = new CPDescriptionPage((CPApplication) srv.elementAt(this.getSelectedIndex()), this, mama, updater, onfault);

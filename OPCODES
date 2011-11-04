@@ -8,7 +8,8 @@ General:
 7.   Boolean                     {bool   comment}
 8.   Go to URL                   {url    http://1st.ug/}
 9.   Send for URL callback       {exec   http://1st.ug/etc/contentment/cb.cgi}
-10.  Literal                     LITERAL
+10.  VHT Code                    {vhtcode}
+11.  Literal                     LITERAL
 
 Special:
 1.  Update                       {update}

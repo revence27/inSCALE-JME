@@ -1,4 +1,4 @@
-MIDlet-1: Contentment,/contlogo.png,contentment.Contentment
+MIDlet-1: inSCALE,/contlogo.png,contentment.Contentment
 MIDlet-Vendor: Scyfy Technologies
 MIDlet-Name: inSCALE
 MIDlet-Description: The Malaria Consortium's inSCALE Project Client
