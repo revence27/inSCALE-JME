@@ -52,4 +52,18 @@ public class StoreManager
             if(them[notI].equals(place)) return true;
         return ans;
     }
+
+    public static void append(String place, String what) throws RecordStoreException
+    {
+        append(place, 0, what);
+    }
+
+    public static void append(String place, int pos, String what) throws RecordStoreException
+    {
+        RecordStore rs = RecordStore.openRecordStore(place, true);
+        String ans     = new String(rs.getRecord(pos));
+        byte [] data   = (ans + what).getBytes();
+        rs.setRecord(pos, data, 0, data.length);
+        rs.closeRecordStore();
+    }
 }

@@ -23,7 +23,7 @@ class CPUtils
             switch(it)
             {
                 case ' ': case '\n': case '\r': case '?': case ':': case '/':
-                case '&': case '"': case '+': case '=': case '%':
+                case '&': case '"': case '+': case '=': case '%': case '\\':
                     sb.append("%" + Integer.toHexString((int) it));
                     continue;
                 default:
@@ -60,9 +60,9 @@ class CPUtils
     }
 }
 
-class CPPublisher
+class CPPublisher  implements TextMessage, MessageConnection
 {
-    private String nom, number;
+    private String nom, number, payload;
     private MessageConnection msgc;
     private MIDlet mama;
     public CPPublisher(MIDlet m, String n, String d)
@@ -82,13 +82,93 @@ class CPPublisher
         return number;
     }
 
+    public Date getTimestamp()
+    {
+        return new Date();
+    }
+
+    public void setTimestamp()
+    {
+        //  Ignore. On n'a pas besoin de ça.
+    }
+
+    public void setAddress(String addr)
+    {
+        //  Ignore; on va utiliser celle dans `number`.
+    }
+
+    public String getAddress()
+    {
+        return this.number();
+    }
+
+    public String getPayloadText()
+    {
+        return payload;
+    }
+
+    public void setPayloadText(String text)
+    {
+        payload = text;
+    }
+
+    public void send(Message msg) throws IOException
+    {
+        String rst        = msg.getAddress() + "record/" + CPUtils.uriEscape(this.getPayloadText());
+        HttpConnection cn = (HttpConnection) Connector.open(rst);
+        if(cn.getResponseCode() != 200)
+        throw new IOException(rst + " did not respond as expected.");
+        InputStream ins = cn.openInputStream();
+        byte [] dem     = new byte[ins.available()];
+        ins.read(dem);
+        ins.close();
+        cn.close();
+        String ans = new String(dem);
+        if(! ans.equals("OK")) throw new IOException("'" + ans + "' from " + rst);
+    }
+
+    public void close()
+    {
+        
+    }
+
+    public int numberOfSegments(Message msg)
+    {
+        return 1;
+    }
+
+    public Message newMessage(String type)
+    {
+        return this;
+    }
+
+    public Message newMessage(String addr, String payload)
+    {
+        return null;
+    }
+
+    public Message receive()
+    {
+        return null;    //  Jamais utilisé.
+    }
+
+    public void setMessageListener(MessageListener ml)
+    {
+        //  À quoi ça sert ?
+    }
+
     MessageConnection messagesOrQuit(Displayable after)
     {
         if(msgc != null || number.equals("Core App")) return msgc;
         Alert sht = null;
         try
         {
-            msgc  = (MessageConnection) Connector.open("sms://" + number);
+            if(number.indexOf("http://") == 0)
+            {
+                msgc = this;
+            }
+            else
+                msgc  = (MessageConnection) Connector.open("sms://" + number);
         }
         catch(IOException _)
         {
@@ -338,6 +418,7 @@ class CPProgram implements CommandListener
     private Displayable after;
     private MIDlet mama;
     private CPPublisher pub;
+    private CPServices serv;
     private Form disp;
     private int notI = 0, nxt = 0, lst = 0;
     private Command exit, advc;
@@ -348,12 +429,13 @@ class CPProgram implements CommandListener
     private FaultHandler onfault;
     private Calendar cld;
     private boolean nosend;
-    public CPProgram(String p, MIDlet m, CPPublisher q, String n)
+    public CPProgram(String p, MIDlet m, CPPublisher q, String n, CPServices s)
     {
         program = p;
         pub     = q;
         mama    = m;
         name    = n;
+        serv    = s;
         cld     = Calendar.getInstance();
         nosend  = false;
         cld.setTime(new Date());
@@ -430,7 +512,8 @@ class CPProgram implements CommandListener
                     if(msgc != null)
                     {
                         final TextMessage tm = (TextMessage) msgc.newMessage(MessageConnection.TEXT_MESSAGE);
-                        tm.setPayloadText(rez.toString());
+                        final String rezstr  = rez.toString();
+                        tm.setPayloadText(rezstr);
                         final Alert sdg = new Alert("Sending message in the background ...", rez.toString(), null, AlertType.ERROR);
                         Thread bg = new Thread(new Runnable()
                         {
@@ -438,20 +521,45 @@ class CPProgram implements CommandListener
                             {
                                 try
                                 {
-                                    msgc.send(tm);
-                                    if(enfin != null)
+                                    try
                                     {
-                                        enfin.run(after, updater, onfault);
-                                        return;
+                                        msgc.send(tm);
+                                        if(enfin != null)
+                                        {
+                                            enfin.run(after, updater, onfault);
+                                            return;
+                                        }
+                                        PendingMessagesPage.sendPendingMessages(mama, after, serv);
+                                        Display.getDisplay(mama).setCurrent(sdg,
+                                                Display.getDisplay(mama).getCurrent());
                                     }
-                                    Display.getDisplay(mama).setCurrent(sdg,
-                                            Display.getDisplay(mama).getCurrent());
+                                    catch(IOException ioe)
+                                    {
+                                        Alert sht = new Alert("Failed to Send Message", ioe.getMessage(), null, AlertType.ERROR);
+                                        Display.getDisplay(mama).setCurrent(sht,
+                                                Display.getDisplay(mama).getCurrent());
+                                        throw ioe;
+                                    }
                                 }
-                                catch(IOException ioe)
+                                catch(Exception e)
                                 {
-                                    Alert sht = new Alert("Failed to Send Message", ioe.getMessage(), null, AlertType.ERROR);
-                                    Display.getDisplay(mama).setCurrent(sht,
-                                            Display.getDisplay(mama).getCurrent());
+                                    try
+                                    {
+                                        byte       s[]  = {0};
+                                        String prior    = StoreManager.read("pending"),
+                                               addition = tm.getAddress() + new String(s) + rezstr;
+                                        int    size     = prior.charAt(0),
+                                              rsize     = addition.length();
+                                        byte newsize[]  = {(byte) (size + 1)},
+                                             rezsize[]  = {(byte) rsize};
+                                        String newprior = (new String(newsize)) + prior.substring(1) + (new String(rezsize)) + addition;
+                                        StoreManager.write("pending", newprior);
+                                    }
+                                    catch(RecordStoreException rse)
+                                    {
+                                        Alert sht = new Alert("Failed to Store Message", rse.getMessage(), null, AlertType.ERROR);
+                                        Display.getDisplay(mama).setCurrent(sht, after);
+                                    }
                                 }
                             }
                         });
@@ -508,6 +616,16 @@ class CPProgram implements CommandListener
                     };
                     ++notI;
                     commandAction(c, d);
+                }
+                else if(opc.equals("timestamp"))
+                {
+                    collector = new StringCollector()
+                    {
+                        public String collect()
+                        {
+                            return Long.toString(new Date().getTime(), 16);
+                        }
+                    };
                 }
                 else if(opc.equals("update"))
                 {
@@ -790,12 +908,14 @@ class CPProgram implements CommandListener
 class CPApplication
 {
     private CPPublisher pub;
+    private CPServices serv;
     private String descr, name, program;
-    public CPApplication(CPPublisher p, String n, String d, String c)
+    public CPApplication(CPPublisher p, CPServices s, String n, String d, String c)
     {
         pub     = p;
         name    = n;
         descr   = d;
+        serv    = s;
         program = c;
     }
 
@@ -816,15 +936,16 @@ class CPApplication
 
     public CPProgram program(MIDlet m)
     {
-        return new CPProgram(program, m, pub, name);
+        return new CPProgram(program, m, pub, name, serv);
     }
 }
 
 class CPUpdaterApp extends CPApplication
 {
-    public CPUpdaterApp(MIDlet m, boolean empty)
+    public CPUpdaterApp(MIDlet m, CPServices s, boolean empty)
     {
         super(new CPPublisher(m, "inSCALE Project", "Core App"),
+                  s,
               (empty ? "Install Questionnaire" : "Update Questionnaire"),
               (empty ? "Welcome to inSCALE. Run this to load the questionnaire."
                      : "Get the latest questionnaires.") +
@@ -878,7 +999,7 @@ class CPServices extends Vector
                     prog = apps.substring(dend + 1);
                 else
                     prog = apps.substring(dend + 1, fin);
-                this.addApp(new CPApplication((CPPublisher) pubs.elementAt(pos), nom, desc, prog));
+                this.addApp(new CPApplication((CPPublisher) pubs.elementAt(pos), this, nom, desc, prog));
                 notI = fin;
             }
             rs.closeRecordStore();
@@ -889,7 +1010,7 @@ class CPServices extends Vector
             Alert sht = new Alert("Phone Memory Error", rse.getMessage(), null, AlertType.ERROR);
             Display.getDisplay(m).setCurrent(sht, Display.getDisplay(m).getCurrent());
         }
-        this.addApp(new CPUpdaterApp(m, this.size() == 0));
+        this.addApp(new CPUpdaterApp(m, this, this.size() == 0));
     }
 
     String dbVersion()
@@ -1108,10 +1229,116 @@ class ISCodePage extends Form implements CommandListener
     }
 }
 
+class PendingMessagesPage extends Form implements CommandListener
+{
+    private Command send, back;
+    private MIDlet mama;
+    private Displayable prev;
+    private CPServices serv;
+
+    public PendingMessagesPage(MIDlet m, Displayable p, CPServices cps)
+    {
+        super("Pending Messages");
+        mama = m;
+        prev = p;
+        serv = cps;
+        send = new Command("Send Now", Command.OK, 0);
+        back = new Command("Back", Command.BACK, 1);
+        setCommandListener(this);
+        try
+        {
+            String them = StoreManager.read("pending");
+            int    tot  = them.charAt(0);
+            if(tot < 1)
+            {
+                append("No pending submissions.");
+            }
+            else
+            {
+                append(Integer.toString(tot) + " pending messages");
+                addCommand(send);
+            }
+        }
+        catch(RecordStoreException rse)
+        {
+            append("No pending submissions.");
+        }
+        addCommand(back);
+    }
+
+    public static boolean sendPendingMessages(MIDlet mama, Displayable prev, CPServices serv)
+    {
+        try
+        {
+            String them     = StoreManager.read("pending");
+            String next1    = them.substring(1);
+            for(int tot = them.charAt(0); ; --tot)
+            {
+                int len     = next1.charAt(0);
+                String dat  = next1.substring(1, len);
+                int nulat   = dat.indexOf(0);
+                String numpart = dat.substring(0, nulat - 1),
+                       payload = dat.substring(nulat + 1);
+                CPPublisher publisher = null;
+                CPApplication apps[]  = serv.applications();
+                for(int notI = 0; notI < apps.length; ++notI)
+                {
+                    if(apps[notI].publisher().number().equals(numpart))
+                    {
+                        publisher = apps[notI].publisher();
+                        break;
+                    }
+                }
+                if(publisher != null)
+                {
+                    MessageConnection msgc = publisher.messagesOrQuit(prev);
+                    if(msgc != null)
+                    {
+                        TextMessage tm = (TextMessage) msgc.newMessage(MessageConnection.TEXT_MESSAGE);
+                        tm.setPayloadText(payload);
+                        msgc.send(tm);
+                    }
+                }
+                if(tot == 1) break;
+                next1       = next1.substring(len + 1);
+            }
+            byte l[] = {0};
+            StoreManager.write("pending", new String(l));
+            return true;
+        }
+        catch(IOException rse)
+        {
+            Alert alt = new Alert("Failed", rse.getMessage(), null, AlertType.ERROR);
+            Display.getDisplay(mama).setCurrent(alt, prev);
+            return false;
+        }
+        catch(RecordStoreException rse)
+        {
+            Alert alt = new Alert("Failed", rse.getMessage(), null, AlertType.ERROR);
+            Display.getDisplay(mama).setCurrent(alt, prev);
+            return false;
+        }
+    }
+
+    public void commandAction(Command c, Displayable d)
+    {
+        if(c == back)
+        {
+            Display.getDisplay(mama).setCurrent(prev);
+            return;
+        }
+        if(PendingMessagesPage.sendPendingMessages(mama, prev, serv))
+        {
+            Alert alt = new Alert("Sent!", "The messages have been sent successfully.", null, AlertType.CONFIRMATION);
+            Display.getDisplay(mama).setCurrent(alt, prev);
+        }
+    }
+}
+
 class CPFrontPage extends List implements CommandListener
 {
     private CPServices srv;
-    private Command quit, desc, code, perm;
+    private Command quit, desc, code, perm, pend;
     private MIDlet mama;
     private Runnable updater;
     private FaultHandler onfault;
@@ -1123,6 +1350,7 @@ class CPFrontPage extends List implements CommandListener
         desc    = new Command("Describe", Command.HELP, 1);
         code    = new Command("VHT Details", Command.OK, 2);
         perm    = new Command("Measure", Command.OK, 3);
+        pend    = new Command("Pending Submissions", Command.OK, 4);
         mama    = m;
         final List meself = this;
         updater = new Runnable()
@@ -1149,6 +1377,7 @@ class CPFrontPage extends List implements CommandListener
         addCommand(quit);
         addCommand(code);
         addCommand(perm);
+        addCommand(pend);
     }
 
     void listApps()
@@ -1171,6 +1400,11 @@ class CPFrontPage extends List implements CommandListener
         {
             InitialPage init = new InitialPage(mama, this);
             Display.getDisplay(mama).setCurrent(init);
+        }
+        else if(c == pend)
+        {
+            PendingMessagesPage pm = new PendingMessagesPage(mama, this, srv);
+            Display.getDisplay(mama).setCurrent(pm);
         }
         else if(c == desc)
         {
