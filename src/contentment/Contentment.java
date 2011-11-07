@@ -626,6 +626,8 @@ class CPProgram implements CommandListener
                             return Long.toString(new Date().getTime(), 16);
                         }
                     };
+                    ++notI;
+                    commandAction(c, d);
                 }
                 else if(opc.equals("update"))
                 {

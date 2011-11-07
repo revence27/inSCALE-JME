@@ -1,7 +1,4 @@
 Pending messages sending will have to endure some testing.
 Sending framework will have to be tested.
 
-What are the restrictions on VHT codes? (Length, alphanum)
-What is the sending degradation strategy? (To SMS? Wait for GPRS?)
-Communicate timestamping.
-Regarding above: should we require explicit date-setting?
+Ask Francis about rent
