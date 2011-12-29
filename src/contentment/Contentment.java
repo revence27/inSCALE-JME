@@ -115,7 +115,9 @@ class CPPublisher  implements TextMessage, MessageConnection
     public void send(Message msg) throws IOException
     {
         String rst        = msg.getAddress() + "record/" + CPUtils.uriEscape(this.getPayloadText());
+        System.err.println(rst);
         HttpConnection cn = (HttpConnection) Connector.open(rst);
+        System.err.println(cn);
         if(cn.getResponseCode() != 200)
         throw new IOException(rst + " did not respond as expected.");
         InputStream ins = cn.openInputStream();
@@ -439,7 +441,6 @@ class CPProgram implements CommandListener
         cld     = Calendar.getInstance();
         nosend  = false;
         cld.setTime(new Date());
-
     }
 
     public void run(Displayable d, Runnable u, FaultHandler onf)
@@ -738,14 +739,26 @@ class CPProgram implements CommandListener
                             ttl = "Number";
                         }
                         catch(NumberFormatException nfe) {}
-                        final TextField dy = new TextField(ttl, Integer.toString(dft), 13, TextField.NUMERIC);
+                        final TextField dy   = new TextField("" /*ttl*/, "" /*Integer.toString(dft)*/, 13, TextField.NUMERIC);
+                        final String titular = ttl;
                         collector = new StringCollector()
                         {
-                           public String collect()
+                           public String collect() throws BadCollectionException
                            {
-                               return dy.getString();
+                               String ans = dy.getString();
+                               try
+                               {
+                                    int it = Integer.parseInt(ans);
+                                    if(! ans.equals(""))
+                                    {
+                                        return ans;
+                                    }
+                               }
+                               catch(NumberFormatException nfe){}
+                               throw new BadCollectionException(titular + " Please enter a valid number.");
                            }
                         };
+                        disp.append(new StringItem("", ttl));
                         disp.append(dy);
                     }
                     else if(cmd.equals("phone"))
@@ -782,7 +795,7 @@ class CPProgram implements CommandListener
                     {
                         disp.deleteAll();
                         String [] yn = {"Yes", "No"};
-                        final ChoiceGroup bl = new ChoiceGroup(rst, Choice.EXCLUSIVE, yn, null);
+                        final ChoiceGroup bl = new ChoiceGroup("" /*rst*/, Choice.EXCLUSIVE, yn, null);
                         collector = new StringCollector()
                         {
                            public String collect()
@@ -790,6 +803,7 @@ class CPProgram implements CommandListener
                                return (bl.getSelectedIndex() == 0 ? "Y" : "N");
                            }
                         };
+                        disp.append(new StringItem("", bl));
                         disp.append(bl);
                     }
                     else if(cmd.equals("choice") || cmd.equals("choices"))
