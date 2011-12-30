@@ -115,18 +115,19 @@ class CPPublisher  implements TextMessage, MessageConnection
     public void send(Message msg) throws IOException
     {
         String rst        = msg.getAddress() + "record/" + CPUtils.uriEscape(this.getPayloadText());
-        System.err.println(rst);
         HttpConnection cn = (HttpConnection) Connector.open(rst);
-        System.err.println(cn);
         if(cn.getResponseCode() != 200)
-        throw new IOException(rst + " did not respond as expected.");
+            throw new IOException(rst + " did not respond as expected.");
         InputStream ins = cn.openInputStream();
         byte [] dem     = new byte[ins.available()];
         ins.read(dem);
         ins.close();
         cn.close();
         String ans = new String(dem);
-        if(! ans.equals("OK")) throw new IOException("'" + ans + "' from " + rst);
+        if((! ans.equals("OK")) && (! ans.equals("")))
+        {
+            throw new IOException("'" + ans + "' from " + rst);
+        }
     }
 
     public void close()
@@ -536,6 +537,8 @@ class CPProgram implements CommandListener
                                     }
                                     catch(IOException ioe)
                                     {
+                                        ioe.printStackTrace();
+                                        System.err.println(ioe.getMessage());
                                         Alert sht = new Alert("Failed to Send Message", ioe.getMessage(), null, AlertType.ERROR);
                                         Display.getDisplay(mama).setCurrent(sht,
                                                 Display.getDisplay(mama).getCurrent());
@@ -547,8 +550,13 @@ class CPProgram implements CommandListener
                                     try
                                     {
                                         byte       s[]  = {0};
-                                        String prior    = StoreManager.read("pending"),
-                                               addition = tm.getAddress() + new String(s) + rezstr;
+                                        String prior    = new String(s);
+                                        try
+                                        {
+                                            prior = StoreManager.read("pending");
+                                        }
+                                        catch(RecordStoreException rse) {}
+                                        String addition = tm.getAddress() + new String(s) + rezstr;
                                         int    size     = prior.charAt(0),
                                               rsize     = addition.length();
                                         byte newsize[]  = {(byte) (size + 1)},
@@ -558,6 +566,8 @@ class CPProgram implements CommandListener
                                     }
                                     catch(RecordStoreException rse)
                                     {
+                                        rse.printStackTrace();
+                                        System.err.println(rse.getMessage());
                                         Alert sht = new Alert("Failed to Store Message", rse.getMessage(), null, AlertType.ERROR);
                                         Display.getDisplay(mama).setCurrent(sht, after);
                                     }
@@ -615,7 +625,7 @@ class CPProgram implements CommandListener
                             }
                         }
                     };
-                    ++notI;
+                    notI = lst + 1;
                     commandAction(c, d);
                 }
                 else if(opc.equals("timestamp"))
@@ -627,7 +637,7 @@ class CPProgram implements CommandListener
                             return Long.toString(new Date().getTime(), 16);
                         }
                     };
-                    ++notI;
+                    notI = lst + 1;
                     commandAction(c, d);
                 }
                 else if(opc.equals("update"))
@@ -760,6 +770,7 @@ class CPProgram implements CommandListener
                         };
                         disp.append(new StringItem("", ttl));
                         disp.append(dy);
+                        Display.getDisplay(mama).setCurrentItem(dy);
                     }
                     else if(cmd.equals("phone"))
                     {
@@ -803,8 +814,9 @@ class CPProgram implements CommandListener
                                return (bl.getSelectedIndex() == 0 ? "Y" : "N");
                            }
                         };
-                        disp.append(new StringItem("", bl));
+                        disp.append(new StringItem("", rst));
                         disp.append(bl);
+                        Display.getDisplay(mama).setCurrentItem(bl);
                     }
                     else if(cmd.equals("choice") || cmd.equals("choices"))
                     {
@@ -1286,8 +1298,13 @@ class PendingMessagesPage extends Form implements CommandListener
     {
         try
         {
+            System.err.println("We fail ...");
             String them     = StoreManager.read("pending");
+            System.err.println("... here ...");
             String next1    = them.substring(1);
+            System.err.println("... or here.");
+            System.err.println(them);
+            System.err.println(Integer.toString(them.charAt(0)));
             for(int tot = them.charAt(0); ; --tot)
             {
                 int len     = next1.charAt(0);
