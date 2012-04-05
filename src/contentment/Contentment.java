@@ -531,7 +531,7 @@ class CPProgram implements CommandListener
                                             enfin.run(after, updater, onfault);
                                             return;
                                         }
-                                        PendingMessagesPage.sendPendingMessages(mama, after, serv);
+                                        PendingMessage.sendPendingMessages(mama, after, serv);
                                         Display.getDisplay(mama).setCurrent(sdg,
                                                 Display.getDisplay(mama).getCurrent());
                                     }
@@ -549,20 +549,8 @@ class CPProgram implements CommandListener
                                 {
                                     try
                                     {
-                                        byte       s[]  = {0};
-                                        String prior    = new String(s);
-                                        try
-                                        {
-                                            prior = StoreManager.read("pending");
-                                        }
-                                        catch(RecordStoreException rse) {}
-                                        String addition = tm.getAddress() + new String(s) + rezstr;
-                                        int    size     = prior.charAt(0),
-                                              rsize     = addition.length();
-                                        byte newsize[]  = {(byte) (size + 1)},
-                                             rezsize[]  = {(byte) rsize};
-                                        String newprior = (new String(newsize)) + prior.substring(1) + (new String(rezsize)) + addition;
-                                        StoreManager.write("pending", newprior);
+                                        //  CPUtils.recordPendingMessage(tm, rezstr);
+                                        PendingMessage.recordPendingMessage(new PendingMessage(tm.getAddress(), rezstr));
                                     }
                                     catch(RecordStoreException rse)
                                     {
@@ -1060,7 +1048,8 @@ class CPServices extends Vector
         {
             String vsn = m.getAppProperty("MIDlet-Jar-SHA1");
             //  String u = "http://inscale.1st.ug/system/get_latest/inscale/" + (vsn == null ? "fresh" : vsn) + "/" + dbVersion();
-            String u = "http://208.86.227.216:3000/system/get_latest/inscale/" + (vsn == null ? "fresh" : vsn) + "/" + dbVersion();
+            //  String u = "http://208.86.227.216:3000/system/get_latest/inscale/" + (vsn == null ? "fresh" : vsn) + "/" + dbVersion();
+            String u = "http://inscale.malariaconsortium.org:3000/system/get_latest/inscale/" + (vsn == null ? "fresh" : vsn) + "/" + dbVersion();
             HttpConnection ucon = (HttpConnection) Connector.open(u);
             InputStream inlet = ucon.openInputStream();
             if(ucon.getResponseCode() != 200)
@@ -1083,7 +1072,7 @@ class CPServices extends Vector
             }
             else if(rsp.substring(0, 6).equals("UPDATE"))
             {
-                Alert alw = new Alert("Update to '" + vsn + "'", "There is a new version of the inSCALE cliet! Accept the update. Thank you!", null, AlertType.INFO);
+                Alert alw = new Alert("Update available!", "There is a new version of the inSCALE cliet! Accept the update. Thank you!", null, AlertType.INFO);
                 Display.getDisplay(m).setCurrent(alw, Display.getDisplay(m).getCurrent());
                 m.platformRequest(rsp.substring(1 + rsp.indexOf(0)));
             }
@@ -1257,6 +1246,157 @@ class ISCodePage extends Form implements CommandListener
     }
 }
 
+class PendingMessage
+{
+    private String destination, message;
+    public PendingMessage(String dest, String msg)
+    {
+        destination = dest;
+        message     = msg;
+    }
+
+    public String getDestination()
+    {
+        return destination;
+    }
+
+    public String getMessage()
+    {
+        return message;
+    }
+
+    public CPPublisher getPublisher(CPServices serv)
+    {
+        CPApplication apps[]  = serv.applications();
+        for(int notI = 0; notI < apps.length; ++notI)
+        {
+            if(apps[notI].publisher().number().equals(destination))
+            {
+                return apps[notI].publisher();
+            }
+        }
+        System.err.println("Who is the one of the " + Integer.toString(apps.length) + " publishers of '" + destination + "'?");
+        return null;
+    }
+
+    public String saveable()
+    {
+        char [] spacer  =   {0};
+        String rez = destination + new String(spacer) + message;
+        char [] ln = {(char) rez.length()};
+        return new String(ln) + rez;
+    }
+
+    public static Vector getPendingMessages() throws RecordStoreException
+    {
+        char [] gapper  =   {0};
+        String them     = new String(gapper);
+        try
+        {
+            them    =   StoreManager.read("pending");
+        }
+        catch(RecordStoreException rse)
+        {
+            System.err.println("Initialising pending store on read.");
+            StoreManager.write("pending", them);
+            return PendingMessage.getPendingMessages();
+        }
+        int tot         = them.charAt(0);
+        String next1    = them.substring(1);
+        Vector msgs     = new Vector(tot);
+        for(; tot > 0; --tot)
+        {
+            int len         = next1.charAt(0);
+            String dat      = next1.substring(1, len + 1);
+            int nulat       = dat.indexOf(0);
+            String numpart  = dat.substring(0, nulat),
+                   payload  = dat.substring(nulat + 1);
+            msgs.addElement(new PendingMessage(numpart, payload));
+            if(tot < 2) break;
+            next1           = next1.substring(len + 1);
+        }
+        return msgs;
+    }
+
+    public static void recordPendingMessage(PendingMessage pmsg) throws RecordStoreException
+    {
+        byte       s[]  = {0};
+        String prior    = new String(s);
+        try
+        {
+            prior = StoreManager.read("pending");
+        }
+        catch(RecordStoreException rse)
+        {
+            StoreManager.write("pending", prior);
+            System.err.println("Initialised pending store.");
+            PendingMessage.recordPendingMessage(pmsg);
+            return;
+        }
+        Vector them = PendingMessage.getPendingMessages();
+        them.addElement(pmsg);
+        char [] reztlc   =  {(char) them.size()};
+        StringBuffer result    =  new StringBuffer(100);
+        result.append(reztlc);
+        for(int notI = 0; notI < them.size(); ++notI)
+        {
+            PendingMessage pm = (PendingMessage) them.elementAt(notI);
+            result.append(pm.saveable());
+        }
+        StoreManager.write("pending", result.toString());
+    }
+
+    public static void recordPendingMessages(Vector v) throws RecordStoreException
+    {
+        try
+        {
+            for(int notI = 0; notI < v.size(); ++notI)
+            {
+                PendingMessage.recordPendingMessage((PendingMessage) v.elementAt(notI));
+            }
+        }
+        catch(ArrayIndexOutOfBoundsException aioob) {}
+    }
+
+    public static boolean sendPendingMessages(MIDlet mama, Displayable prev, CPServices serv)
+    {
+        try
+        {
+            Vector penders  = PendingMessage.getPendingMessages();
+            for(int notI = 0; notI < penders.size(); ++notI)
+            {
+                PendingMessage pender = (PendingMessage) penders.elementAt(notI);
+                CPPublisher pub       = pender.getPublisher(serv);
+                if(pub != null)
+                {
+                    MessageConnection msgc = pub.messagesOrQuit(prev);
+                    if(msgc != null)
+                    {
+                        TextMessage tm = (TextMessage) msgc.newMessage(MessageConnection.TEXT_MESSAGE);
+                        tm.setPayloadText(pender.getMessage());
+                        msgc.send(tm);
+                    }
+                }
+            }
+            StoreManager.write("pending", "\0");
+            return true;
+        }
+        catch(IOException rse)
+        {
+            rse.printStackTrace();
+            Alert alt = new Alert("Failed", rse.getMessage(), null, AlertType.ERROR);
+            Display.getDisplay(mama).setCurrent(alt, prev);
+        }
+        catch(RecordStoreException rse)
+        {
+            rse.printStackTrace();
+            Alert alt = new Alert("Failed", rse.getMessage(), null, AlertType.ERROR);
+            Display.getDisplay(mama).setCurrent(alt, prev);
+        }
+        return false;
+    }
+}
+
 class PendingMessagesPage extends Form implements CommandListener
 {
     private Command send, back;
@@ -1294,65 +1434,6 @@ class PendingMessagesPage extends Form implements CommandListener
         addCommand(back);
     }
 
-    public static boolean sendPendingMessages(MIDlet mama, Displayable prev, CPServices serv)
-    {
-        try
-        {
-            System.err.println("We fail ...");
-            String them     = StoreManager.read("pending");
-            System.err.println("... here ...");
-            String next1    = them.substring(1);
-            System.err.println("... or here.");
-            System.err.println(them);
-            System.err.println(Integer.toString(them.charAt(0)));
-            for(int tot = them.charAt(0); ; --tot)
-            {
-                int len     = next1.charAt(0);
-                String dat  = next1.substring(1, len);
-                int nulat   = dat.indexOf(0);
-                String numpart = dat.substring(0, nulat - 1),
-                       payload = dat.substring(nulat + 1);
-                CPPublisher publisher = null;
-                CPApplication apps[]  = serv.applications();
-                for(int notI = 0; notI < apps.length; ++notI)
-                {
-                    if(apps[notI].publisher().number().equals(numpart))
-                    {
-                        publisher = apps[notI].publisher();
-                        break;
-                    }
-                }
-                if(publisher != null)
-                {
-                    MessageConnection msgc = publisher.messagesOrQuit(prev);
-                    if(msgc != null)
-                    {
-                        TextMessage tm = (TextMessage) msgc.newMessage(MessageConnection.TEXT_MESSAGE);
-                        tm.setPayloadText(payload);
-                        msgc.send(tm);
-                    }
-                }
-                if(tot == 1) break;
-                next1       = next1.substring(len + 1);
-            }
-            byte l[] = {0};
-            StoreManager.write("pending", new String(l));
-            return true;
-        }
-        catch(IOException rse)
-        {
-            Alert alt = new Alert("Failed", rse.getMessage(), null, AlertType.ERROR);
-            Display.getDisplay(mama).setCurrent(alt, prev);
-            return false;
-        }
-        catch(RecordStoreException rse)
-        {
-            Alert alt = new Alert("Failed", rse.getMessage(), null, AlertType.ERROR);
-            Display.getDisplay(mama).setCurrent(alt, prev);
-            return false;
-        }
-    }
-
     public void commandAction(Command c, Displayable d)
     {
         if(c == back)
@@ -1360,7 +1441,7 @@ class PendingMessagesPage extends Form implements CommandListener
             Display.getDisplay(mama).setCurrent(prev);
             return;
         }
-        if(PendingMessagesPage.sendPendingMessages(mama, prev, serv))
+        if(PendingMessage.sendPendingMessages(mama, prev, serv))
         {
             Alert alt = new Alert("Sent!", "The messages have been sent successfully.", null, AlertType.CONFIRMATION);
             Display.getDisplay(mama).setCurrent(alt, prev);

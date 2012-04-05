@@ -32,14 +32,17 @@ public class StoreManager
 
     public static void write(String place, String what) throws RecordStoreException
     {
-        StoreManager.write(place, 0, what);
-    }
-
-    public static void write(String place, int pos, String what) throws RecordStoreException
-    {
         RecordStore rs = RecordStore.openRecordStore(place, true);
         byte [] data   = what.getBytes();
-        rs.addRecord(data, pos, data.length);
+        try
+        {
+            rs.setRecord(1, data, 0, data.length);
+        }
+        catch(InvalidRecordIDException irie)
+        {
+            //  irie.printStackTrace();
+            rs.addRecord(data, 0, data.length);
+        }
         rs.closeRecordStore();
     }
 
@@ -55,7 +58,7 @@ public class StoreManager
 
     public static void append(String place, String what) throws RecordStoreException
     {
-        append(place, 0, what);
+        append(place, 1, what);
     }
 
     public static void append(String place, int pos, String what) throws RecordStoreException
