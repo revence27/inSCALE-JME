@@ -13,12 +13,14 @@ package contentment;
 import javax.microedition.lcdui.*;
 import javax.microedition.midlet.MIDlet;
 
-class ResultPage extends Form implements CommandListener
+class ResultPage extends Form implements CommandListener, Runnable
 {
     Displayable prev;
     MIDlet mama;
     StringItem disp;
     Command don;
+    Thread thd;
+    boolean silence;
     public ResultPage(String t, Displayable d, MIDlet m, int cmpt)
     {
         super(t);
@@ -26,15 +28,43 @@ class ResultPage extends Form implements CommandListener
         mama = m;
         prev = d;
         don  = new Command("Done", Command.OK | Command.EXIT, 0);
+        thd  = new Thread(this);
         append(disp);
         setCommandListener(this);
         addCommand(don);
+        thd.start();
+        silence = false;
+    }
+
+    public void run()
+    {
+        while(! silence)
+        {
+            for(int notJ = 0; (! silence) && (notJ < 4); ++notJ)
+            {
+                for(int notI = 0; (! silence) && (notI < 2); ++notI)
+                {
+                    AlertType.INFO.playSound(Display.getDisplay(mama));
+                }
+                try
+                {
+                    Thread.sleep(1000);
+                }
+                catch(InterruptedException ie)
+                {
+                    silence = true;
+                    break;
+                }
+            }
+            silence = true;
+        }
     }
 
     public void commandAction(Command c, Displayable d)
     {
         if(c == don && d == this)
         {
+            silence = true;
             Display.getDisplay(mama).setCurrent(prev);
         }
     }
@@ -140,8 +170,8 @@ class CounterPage extends Form implements CommandListener, Runnable
     void repaint()
     {
         lab.setText(Integer.toString(cmpt) + " count" + (cmpt == 1 ? "" : "s")
-                + ".\n\n" +
-                Integer.toString(ctdn) + " second" + (ctdn == 1 ? "" : "s") + " left.");
+                /*  + ".\n\n" +
+                Integer.toString(ctdn) + " second" + (ctdn == 1 ? "" : "s") + " left."  */);
     }
 }
 

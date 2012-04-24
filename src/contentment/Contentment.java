@@ -63,13 +63,35 @@ class CPUtils
 class CPPublisher  implements TextMessage, MessageConnection
 {
     private String nom, number, payload;
-    private MessageConnection msgc;
+    //  private MessageConnection msgc;
     private MIDlet mama;
     public CPPublisher(MIDlet m, String n, String d)
     {
         nom    = n;
         number = d;
         mama   = m;
+    }
+
+    private String[] choppedNumber()
+    {
+        Vector rez = new Vector(5, 5);
+        StringBuffer holder = new StringBuffer(50);
+        char[] them = this.number().toCharArray();
+        for(int notI = 0; notI < them.length; ++notI)
+        {
+            if( them[notI] == '|')
+            {
+                rez.addElement(holder.toString());
+                holder = new StringBuffer(holder.length());
+            }
+            else
+            {
+                holder.append(them[notI]);
+            }
+        }
+        String ans[] = new String[rez.size()];
+        rez.copyInto(ans);
+        return ans;
     }
 
     public String name()
@@ -160,29 +182,43 @@ class CPPublisher  implements TextMessage, MessageConnection
         //  À quoi ça sert ?
     }
 
-    MessageConnection messagesOrQuit(Displayable after)
+    MessageConnection [] allConnections(Displayable after)
     {
-        if(msgc != null || number.equals("Core App")) return msgc;
         Alert sht = null;
-        try
+        String pieces[] = this.choppedNumber();
+        //  MessageConnection them[] = new MessageConnection[pieces.length];
+        Vector ans  = new Vector(pieces.length, pieces.length);
+        for(int notI = 0; notI < pieces.length; ++notI)
         {
-            if(number.indexOf("http://") == 0)
+            if(pieces[notI].equals("Core App")) continue;
+            try
             {
-                msgc = this;
+                if(number.indexOf("http://") == 0)
+                    //  ans.addElement(this);   //  TODO: Change this to point to one HTTP connection.
+                    ans.addElement(new CPPublisher(mama, this.name(), pieces[notI]));
+                else
+                    ans.addElement((MessageConnection) Connector.open("sms://" + number));
             }
-            else
-                msgc  = (MessageConnection) Connector.open("sms://" + number);
-        }
-        catch(IOException _)
-        {
-            sht = new Alert("Messaging Error", "Messages to " + nom + " have not been allowed.", null, AlertType.ERROR);
-        }
-        catch(IllegalArgumentException iae)
-        {
-            sht = new Alert("Messaging Error", "Cannot send messages to \"" + number + "\".", null, AlertType.ERROR);
+            catch(IOException _)
+            {
+                sht = new Alert("Messaging Error", "Messages to " + nom + " have not been allowed.", null, AlertType.ERROR);
+            }
+            catch(IllegalArgumentException iae)
+            {
+                sht = new Alert("Messaging Error", "Cannot send messages to \"" + number + "\".", null, AlertType.ERROR);
+            }
         }
         if(sht != null) Display.getDisplay(mama).setCurrent(sht, after);
-        return msgc;
+        MessageConnection them[] = new MessageConnection[ans.size()];
+        ans.copyInto(them);
+        return them;
+    }
+
+    MessageConnection messagesOrQuit(Displayable after)
+    {
+        MessageConnection them[] = this.allConnections(after);
+        if(them.length > 0) return them[0];
+        return null;
     }
 }
 
@@ -590,6 +626,7 @@ class CPProgram implements CommandListener
                 }
                 else if(opc.equals("vhtcode"))
                 {
+                    /*
                     if(! StoreManager.exists("vhtcode"))
                     {
                         Alert alt = new Alert("VHT Code", "First record your VHT code", null, AlertType.ERROR);
@@ -599,18 +636,14 @@ class CPProgram implements CommandListener
                         disp.append("Press OK to continue.");
                         return;
                     }
+                     * */
+                    disp.deleteAll();
+                    final TextField vhtcode = new TextField("VHT Code", "", 15, TextField.ANY);
                     collector = new StringCollector()
                     {
                         public String collect()
                         {
-                            try
-                            {
-                                return StoreManager.read("vhtcode");
-                            }
-                            catch(RecordStoreException rse)
-                            {
-                                return "UNKNOWN";
-                            }
+                            return vhtcode.getString();
                         }
                     };
                     notI = lst + 1;
@@ -1369,12 +1402,17 @@ class PendingMessage
                 CPPublisher pub       = pender.getPublisher(serv);
                 if(pub != null)
                 {
-                    MessageConnection msgc = pub.messagesOrQuit(prev);
-                    if(msgc != null)
+                    MessageConnection am[] = pub.allConnections(prev);
+                    for(int notJ = 0; notJ < am.length; ++notJ)
                     {
-                        TextMessage tm = (TextMessage) msgc.newMessage(MessageConnection.TEXT_MESSAGE);
-                        tm.setPayloadText(pender.getMessage());
-                        msgc.send(tm);
+                        //  MessageConnection msgc = pub.messagesOrQuit(prev);
+                        MessageConnection msgc = am[notJ];
+                        if(msgc != null)
+                        {
+                            TextMessage tm = (TextMessage) msgc.newMessage(MessageConnection.TEXT_MESSAGE);
+                            tm.setPayloadText(pender.getMessage());
+                            msgc.send(tm);
+                        }
                     }
                 }
             }
@@ -1441,11 +1479,19 @@ class PendingMessagesPage extends Form implements CommandListener
             Display.getDisplay(mama).setCurrent(prev);
             return;
         }
-        if(PendingMessage.sendPendingMessages(mama, prev, serv))
+        Alert al0 = new Alert("Sending ...", "The messages are being sent in the background.", null, AlertType.CONFIRMATION);
+        Display.getDisplay(mama).setCurrent(al0, prev);
+        new Thread(new Runnable()
         {
-            Alert alt = new Alert("Sent!", "The messages have been sent successfully.", null, AlertType.CONFIRMATION);
-            Display.getDisplay(mama).setCurrent(alt, prev);
-        }
+            public void run()
+            {
+                if(PendingMessage.sendPendingMessages(mama, prev, serv))
+                {
+                    Alert alt = new Alert("Sent!", "The pending messages have been sent successfully.", null, AlertType.CONFIRMATION);
+                    Display.getDisplay(mama).setCurrent(alt, Display.getDisplay(mama).getCurrent());
+                }
+            }
+        }).start();
     }
 }
 
@@ -1463,7 +1509,7 @@ class CPFrontPage extends List implements CommandListener
         quit    = new Command("Quit", Command.EXIT, 0);
         desc    = new Command("Describe", Command.HELP, 1);
         code    = new Command("VHT Details", Command.OK, 2);
-        perm    = new Command("Measure", Command.OK, 3);
+        perm    = new Command("Measure Breathing Rate", Command.OK, 3);
         pend    = new Command("Pending Submissions", Command.OK, 4);
         mama    = m;
         final List meself = this;
@@ -1512,8 +1558,10 @@ class CPFrontPage extends List implements CommandListener
         }
         else if(c == perm)
         {
-            InitialPage init = new InitialPage(mama, this);
-            Display.getDisplay(mama).setCurrent(init);
+            /*InitialPage init = new InitialPage(mama, this);
+            Display.getDisplay(mama).setCurrent(init);*/
+            CounterPage counter = new CounterPage("Breathing Rate", this, mama);
+            Display.getDisplay(mama).setCurrent(counter);
         }
         else if(c == pend)
         {
