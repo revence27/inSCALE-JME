@@ -10,8 +10,10 @@ package contentment;
  * @author Revence
  */
 
+import java.io.*;
 import javax.microedition.lcdui.*;
 import javax.microedition.midlet.MIDlet;
+import javax.microedition.media.*;
 
 class ResultPage extends Form implements CommandListener, Runnable
 {
@@ -20,7 +22,6 @@ class ResultPage extends Form implements CommandListener, Runnable
     StringItem disp;
     Command don;
     Thread thd;
-    boolean silence;
     public ResultPage(String t, Displayable d, MIDlet m, int cmpt)
     {
         super(t);
@@ -33,38 +34,29 @@ class ResultPage extends Form implements CommandListener, Runnable
         setCommandListener(this);
         addCommand(don);
         thd.start();
-        silence = false;
     }
 
     public void run()
     {
-        while(! silence)
+        try
         {
-            for(int notJ = 0; (! silence) && (notJ < 4); ++notJ)
-            {
-                for(int notI = 0; (! silence) && (notI < 2); ++notI)
-                {
-                    AlertType.INFO.playSound(Display.getDisplay(mama));
-                }
-                try
-                {
-                    Thread.sleep(1000);
-                }
-                catch(InterruptedException ie)
-                {
-                    silence = true;
-                    break;
-                }
-            }
-            silence = true;
+            Display curd = Display.getDisplay(mama);
+            curd.flashBacklight(5000);
+            curd.vibrate(5000);
+            InputStream ins = getClass().getResourceAsStream("/alarma.wav");
+            Player      ply = Manager.createPlayer(ins, "audio/X-wav");
+            ply.start();
+            ply.close();
+            ins.close();
         }
+        catch(IOException ioe) {}
+        catch(MediaException me) {}
     }
 
     public void commandAction(Command c, Displayable d)
     {
         if(c == don && d == this)
         {
-            silence = true;
             Display.getDisplay(mama).setCurrent(prev);
         }
     }
@@ -98,6 +90,13 @@ class CounterPage extends Form implements CommandListener, Runnable
         addCommand(stt);
         addCommand(don);
         setCommandListener(this);
+    }
+
+    public int setCountdown(int newcd)
+    {
+        int old = ctdn;
+        ctdn    = newcd;
+        return old;
     }
 
     public void commandAction(Command c, Displayable d)

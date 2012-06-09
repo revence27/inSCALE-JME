@@ -506,6 +506,7 @@ class CPProgram implements CommandListener
             }
             catch(Exception e)
             {
+                e.printStackTrace();
                 throw new SegmentationFaultEtc(name, (e.getMessage() == null ? "Programming error." : e.getMessage()));
             }
         }
@@ -552,7 +553,8 @@ class CPProgram implements CommandListener
                         final TextMessage tm = (TextMessage) msgc.newMessage(MessageConnection.TEXT_MESSAGE);
                         final String rezstr  = rez.toString();
                         tm.setPayloadText(rezstr);
-                        final Alert sdg = new Alert("Sending message in the background ...", rez.toString(), null, AlertType.ERROR);
+                        //  final Alert sdg = new Alert("Sending message in the background ...", rez.toString(), null, AlertType.ERROR);
+                        final Alert sdg = new Alert("Added to pending messages ...", rez.toString(), null, AlertType.ERROR);
                         Thread bg = new Thread(new Runnable()
                         {
                             public void run()
@@ -561,7 +563,8 @@ class CPProgram implements CommandListener
                                 {
                                     try
                                     {
-                                        msgc.send(tm);
+                                        //  msgc.send(tm);
+                                        PendingMessage.recordPendingMessage(new PendingMessage(tm.getAddress(), rezstr));
                                         if(enfin != null)
                                         {
                                             enfin.run(after, updater, onfault);
@@ -571,7 +574,8 @@ class CPProgram implements CommandListener
                                         Display.getDisplay(mama).setCurrent(sdg,
                                                 Display.getDisplay(mama).getCurrent());
                                     }
-                                    catch(IOException ioe)
+                                    //  catch(IOException ioe)
+                                    catch(Exception ioe)
                                     {
                                         ioe.printStackTrace();
                                         System.err.println(ioe.getMessage());
@@ -624,6 +628,35 @@ class CPProgram implements CommandListener
                     commandAction(c, d);
                     return;
                 }
+                else if(opc.equals("1minute"))
+                {
+                    CounterPage counter = new CounterPage("Breathing Rate", disp, mama);
+                    collector = new StringCollector()
+                    {
+                        public String collect()
+                        {
+                            return "";
+                        }
+                    };
+                    Display.getDisplay(mama).setCurrent(counter);
+                    notI = lst + 1;
+                    commandAction(c, d);
+                }
+                else if(opc.equals("15minute"))
+                {
+                    CounterPage counter = new CounterPage("RDT Counter", disp, mama);
+                    counter.setCountdown(60 * 15);
+                    collector = new StringCollector()
+                    {
+                        public String collect()
+                        {
+                            return "";
+                        }
+                    };
+                    Display.getDisplay(mama).setCurrent(counter);
+                    notI = lst + 1;
+                    commandAction(c, d);
+                }
                 else if(opc.equals("vhtcode"))
                 {
                     /*
@@ -639,6 +672,7 @@ class CPProgram implements CommandListener
                      * */
                     disp.deleteAll();
                     final TextField vhtcode = new TextField("VHT Code", "", 15, TextField.ANY);
+                    disp.append(vhtcode);
                     collector = new StringCollector()
                     {
                         public String collect()
@@ -646,8 +680,8 @@ class CPProgram implements CommandListener
                             return vhtcode.getString();
                         }
                     };
-                    notI = lst + 1;
-                    commandAction(c, d);
+                    //  notI = lst + 1;
+                    //  commandAction(c, d);
                 }
                 else if(opc.equals("timestamp"))
                 {
@@ -690,6 +724,37 @@ class CPProgram implements CommandListener
                         {
                             stt.setText(sfr + " failed: " + cnf.getMessage());
                         }
+                    }
+                    else if(cmd.equals("calendar"))
+                    {
+                        disp.deleteAll();
+                        disp.append(rst);
+                        final TextField    yr = new TextField("Year", Integer.toString(cld.get(Calendar.YEAR)), 4, TextField.NUMERIC);
+                        String[] mths         = {"January", "February", "March",
+                                                 "April", "May", "June",
+                                                 "July", "August", "September",
+                                                 "October", "November", "December"};
+                        final ChoiceGroup mts = new ChoiceGroup("Month", Choice.EXCLUSIVE, mths, null);
+                        mts.setSelectedIndex(cld.get(Calendar.MONTH), true);
+                        String[] days = new String[31];
+                        for(int notK = 0; notK < days.length; ++notK)
+                        {
+                            days[notK] = Integer.toString(notK + 1);
+                        }
+                        final ChoiceGroup dys = new ChoiceGroup("Day", Choice.EXCLUSIVE, days, null);
+                        dys.setSelectedIndex(cld.get(Calendar.DAY_OF_MONTH) - 1, true);
+                        collector = new StringCollector()
+                        {
+                           public String collect()
+                           {
+                               return (yr.getString() + "/" +
+                                       Integer.toString(mts.getSelectedIndex() + 1) + "/" +
+                                       Integer.toString(dys.getSelectedIndex() + 1));
+                           }
+                        };
+                        disp.append(yr);
+                        disp.append(mts);
+                        disp.append(dys);
                     }
                     else if(cmd.equals("year"))
                     {
@@ -881,6 +946,7 @@ class CPProgram implements CommandListener
                             size = Integer.parseInt(rst.substring(0, sze));
                         }
                         catch(NumberFormatException nfe) {}
+                        catch(StringIndexOutOfBoundsException sioobe) {}
                         final TextField tf = new TextField(rst.substring(sze + 1), "", size, TextField.ANY);
                         collector = new StringCollector()
                         {
@@ -900,20 +966,18 @@ class CPProgram implements CommandListener
                         {
                             size = Integer.parseInt(rst.substring(0, sze));
                         }
-                        catch(NumberFormatException nfe)
-                        {
-                            sze = -1;
-                        }
-                        Command [] cmds = {exit, advc};
-                        final DataInput di = new DataInput(rst.substring(sze + 1), "", size, TextField.ANY, cmds, this);
+                        catch(NumberFormatException nfe) {}
+                        catch(StringIndexOutOfBoundsException sioobe) {}
+                        final TextField tf = new TextField(rst.substring(sze + 1), "", size, TextField.ANY);
                         collector = new StringCollector()
                         {
                             public String collect()
                             {
-                                return CPUtils.uriEscape(di.getString());
+                                return CPUtils.uriEscape(tf.getString());
                             }
                         };
-                        Display.getDisplay(mama).setCurrent(di);
+                        disp.deleteAll();
+                        disp.append(tf);
                     }
                     else if(cmd.equals("show"))
                     {
