@@ -22,6 +22,9 @@ class ResultPage extends Form implements CommandListener, Runnable
     StringItem disp;
     Command don;
     Thread thd;
+    InputStream ins;
+    Player      ply;
+
     public ResultPage(String t, Displayable d, MIDlet m, int cmpt)
     {
         super(t);
@@ -30,6 +33,13 @@ class ResultPage extends Form implements CommandListener, Runnable
         prev = d;
         don  = new Command("Done", Command.OK | Command.EXIT, 0);
         thd  = new Thread(this);
+        ins = getClass().getResourceAsStream("/alarma.wav");
+        try
+        {
+            ply = Manager.createPlayer(ins, "audio/X-wav");
+        }
+        catch(IOException ioe) {}
+        catch(MediaException me) {}
         append(disp);
         setCommandListener(this);
         addCommand(don);
@@ -43,14 +53,9 @@ class ResultPage extends Form implements CommandListener, Runnable
             Display curd = Display.getDisplay(mama);
             curd.flashBacklight(5000);
             curd.vibrate(5000);
-            InputStream ins = getClass().getResourceAsStream("/alarma.wav");
-            Player      ply = Manager.createPlayer(ins, "audio/X-wav");
             ply.start();
-            ply.close();
-            ins.close();
         }
-        catch(IOException ioe) {}
-        catch(MediaException me) {}
+        catch(Exception e){}
     }
 
     public void commandAction(Command c, Displayable d)
@@ -58,6 +63,12 @@ class ResultPage extends Form implements CommandListener, Runnable
         if(c == don && d == this)
         {
             Display.getDisplay(mama).setCurrent(prev);
+            ply.close();
+            try
+            {
+                ins.close();
+            }
+            catch(IOException ioe) {}
         }
     }
 }
@@ -66,14 +77,14 @@ class CounterPage extends Form implements CommandListener, Runnable
 {
     Command inc, don, stt;
     StringItem lab;
-    boolean air;
+    boolean air, automated;
     Displayable prev;
     MIDlet mama;
     int cmpt, ctdn;
     ResultPage rslt;
     String ttl;
     Thread thd;
-    public CounterPage(String t, Displayable p, MIDlet m)
+    public CounterPage(String t, Displayable p, MIDlet m, boolean auto)
     {
         super(t);
         ttl  = t;
@@ -86,6 +97,7 @@ class CounterPage extends Form implements CommandListener, Runnable
         inc  = new Command("+1", Command.OK, 0);
         stt  = new Command("Start", Command.OK, 0);
         don  = new Command("Done", Command.EXIT, 0);
+        automated = auto;
         append(lab);
         addCommand(stt);
         addCommand(don);
@@ -146,8 +158,7 @@ class CounterPage extends Form implements CommandListener, Runnable
                 if(ctdn == 0) throw new InterruptedException();
             }
         }
-        catch(InterruptedException e)
-        {}
+        catch(InterruptedException e) {}
         this.nextScreen();
     }
 
@@ -161,16 +172,24 @@ class CounterPage extends Form implements CommandListener, Runnable
     {
         ++cmpt;
         /*Display d = Display.getDisplay(mama);
-        d.vibrate(500);
-        repaint();*/
+        d.vibrate(500);*/
+        repaint();
         AlertType.CONFIRMATION.playSound(Display.getDisplay(mama));
+    }
+
+    String timeDescription(int seconds)
+    {
+        int mins = seconds % 60;
+        int secs = seconds - (mins * 60);
+        //  if(mins < 1) return Integer.toString(secs) + " second" + (secs == 1 ? "s" : "");
+        //  return Integer.toString(mins) + " minute" + (mins == 1 ? "" : "s") + " and " + Integer.toString(seconds) + " second" + (secs == 1 ? "s" : "");
+        return (mins < 10 ? "0" : "") + Integer.toString(mins) + ":" + (secs < 10 ? "0" : "") + Integer.toString(secs);
     }
 
     void repaint()
     {
-        lab.setText(Integer.toString(cmpt) + " count" + (cmpt == 1 ? "" : "s")
-                /*  + ".\n\n" +
-                Integer.toString(ctdn) + " second" + (ctdn == 1 ? "" : "s") + " left."  */);
+        lab.setText((automated ? "" : Integer.toString(cmpt) + " count" + (cmpt == 1 ? "." : "s.")) +
+            (automated ? timeDescription(ctdn) + " left." : ""));
     }
 }
 
@@ -214,7 +233,7 @@ public class InitialPage extends List implements CommandListener
             default:
                 //  Is the default.
         }
-        counter = new CounterPage(titre, this, mama);
+        counter = new CounterPage(titre, this, mama, false);
         Display.getDisplay(mama).setCurrent(counter);
     }
 }

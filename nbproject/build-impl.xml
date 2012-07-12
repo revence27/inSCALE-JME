@@ -272,10 +272,6 @@
     </target>
     <target name="post-compile-single"/>
     <target name="compile-single" depends="preprocess,pre-compile-single,do-compile-single,post-compile-single" description="Compile selected project classes."/>
-    <!--obfuscate-->
-    <target name="pre-obfuscate"/>
-    <target name="post-obfuscate"/>
-    <target name="obfuscate" depends="compile,post-obfuscate" description="Obfuscate project classes."/>
     <!--proguard-->
     <target name="proguard-init" description="Up-to-date check before obfuscation.">
         <property name="obfuscation.level" value="0"/>
@@ -320,6 +316,10 @@
     </target>
     <target name="-post-lwuit-build" if="has-lwuit"/>
     <target name="lwuit-build" depends="-pre-lwuit-build, -lwuit-build, -post-lwuit-build" if="has-lwuit"/>
+    <!--obfuscate-->
+    <target name="pre-obfuscate"/>
+    <target name="post-obfuscate"/>
+    <target name="obfuscate" depends="compile,pre-obfuscate,proguard,lwuit-build,post-obfuscate" description="Obfuscate project classes."/>
     <!--preverify-->
     <target name="pre-preverify"/>
     <target name="do-preverify" if="cldc-platform.trigger">
@@ -336,7 +336,7 @@
         <nb-overrideproperty name="buildsystem.baton" value="${preverify.classes.dir}"/>
     </target>
     <target name="post-preverify"/>
-    <target name="preverify" depends="obfuscate,pre-obfuscate,proguard,lwuit-build,pre-preverify,do-preverify,post-preverify" description="Preverify project classes."/>
+    <target name="preverify" depends="obfuscate,pre-preverify,do-preverify,post-preverify" description="Preverify project classes."/>
     <!--set-password-->
     <target name="set-password-init">
         <property name="sign.enabled" value="false"/>

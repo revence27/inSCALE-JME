@@ -89,6 +89,7 @@ class CPPublisher  implements TextMessage, MessageConnection
                 holder.append(them[notI]);
             }
         }
+        rez.addElement(holder.toString());
         String ans[] = new String[rez.size()];
         rez.copyInto(ans);
         return ans;
@@ -197,7 +198,7 @@ class CPPublisher  implements TextMessage, MessageConnection
                     //  ans.addElement(this);   //  TODO: Change this to point to one HTTP connection.
                     ans.addElement(new CPPublisher(mama, this.name(), pieces[notI]));
                 else
-                    ans.addElement((MessageConnection) Connector.open("sms://" + number));
+                    ans.addElement((MessageConnection) Connector.open(/*"sms://" +*/ number));
             }
             catch(IOException _)
             {
@@ -208,7 +209,11 @@ class CPPublisher  implements TextMessage, MessageConnection
                 sht = new Alert("Messaging Error", "Cannot send messages to \"" + number + "\".", null, AlertType.ERROR);
             }
         }
-        if(sht != null) Display.getDisplay(mama).setCurrent(sht, after);
+        if(sht != null)
+        {
+            Display.getDisplay(mama).setCurrent(sht, after);
+            return new MessageConnection[0];
+        }
         MessageConnection them[] = new MessageConnection[ans.size()];
         ans.copyInto(them);
         return them;
@@ -570,7 +575,8 @@ class CPProgram implements CommandListener
                                             enfin.run(after, updater, onfault);
                                             return;
                                         }
-                                        PendingMessage.sendPendingMessages(mama, after, serv);
+                                        //  PendingMessage.sendPendingMessages(mama, after, serv);
+                                        PendingMessage.sendPendingMessages(mama, Display.getDisplay(mama).getCurrent(), serv);
                                         Display.getDisplay(mama).setCurrent(sdg,
                                                 Display.getDisplay(mama).getCurrent());
                                     }
@@ -630,7 +636,7 @@ class CPProgram implements CommandListener
                 }
                 else if(opc.equals("1minute"))
                 {
-                    CounterPage counter = new CounterPage("Breathing Rate", disp, mama);
+                    CounterPage counter = new CounterPage("Breathing Rate", disp, mama, false);
                     collector = new StringCollector()
                     {
                         public String collect()
@@ -642,10 +648,10 @@ class CPProgram implements CommandListener
                     notI = lst + 1;
                     commandAction(c, d);
                 }
-                else if(opc.equals("15minute"))
+                else if(opc.equals("20minute"))
                 {
-                    CounterPage counter = new CounterPage("RDT Counter", disp, mama);
-                    counter.setCountdown(60 * 15);
+                    CounterPage counter = new CounterPage("RDT Counter", disp, mama, true);
+                    counter.setCountdown(60 * 20);
                     collector = new StringCollector()
                     {
                         public String collect()
@@ -659,17 +665,6 @@ class CPProgram implements CommandListener
                 }
                 else if(opc.equals("vhtcode"))
                 {
-                    /*
-                    if(! StoreManager.exists("vhtcode"))
-                    {
-                        Alert alt = new Alert("VHT Code", "First record your VHT code", null, AlertType.ERROR);
-                        ISCodePage vhter = new ISCodePage(mama, d);
-                        Display.getDisplay(mama).setCurrent(alt, vhter);
-                        disp.deleteAll();
-                        disp.append("Press OK to continue.");
-                        return;
-                    }
-                     * */
                     disp.deleteAll();
                     final TextField vhtcode = new TextField("VHT Code", "", 15, TextField.ANY);
                     disp.append(vhtcode);
@@ -680,8 +675,6 @@ class CPProgram implements CommandListener
                             return vhtcode.getString();
                         }
                     };
-                    //  notI = lst + 1;
-                    //  commandAction(c, d);
                 }
                 else if(opc.equals("timestamp"))
                 {
@@ -736,20 +729,18 @@ class CPProgram implements CommandListener
                                                  "October", "November", "December"};
                         final ChoiceGroup mts = new ChoiceGroup("Month", Choice.EXCLUSIVE, mths, null);
                         mts.setSelectedIndex(cld.get(Calendar.MONTH), true);
-                        String[] days = new String[31];
-                        for(int notK = 0; notK < days.length; ++notK)
-                        {
-                            days[notK] = Integer.toString(notK + 1);
-                        }
-                        final ChoiceGroup dys = new ChoiceGroup("Day", Choice.EXCLUSIVE, days, null);
-                        dys.setSelectedIndex(cld.get(Calendar.DAY_OF_MONTH) - 1, true);
+                        final TextField dys   = new TextField("Day", Integer.toString(cld.get(Calendar.DATE)), 2, TextField.NUMERIC);
                         collector = new StringCollector()
                         {
                            public String collect()
                            {
+                               Calendar c2 = Calendar.getInstance();
+                               c2.set(Calendar.YEAR, Integer.parseInt(yr.getString()));
+                               c2.set(Calendar.MONTH, mts.getSelectedIndex());
+                               c2.set(Calendar.DATE, Integer.parseInt(dys.getString()));
                                return (yr.getString() + "/" +
                                        Integer.toString(mts.getSelectedIndex() + 1) + "/" +
-                                       Integer.toString(dys.getSelectedIndex() + 1));
+                                       dys.getString());
                            }
                         };
                         disp.append(yr);
@@ -1063,7 +1054,7 @@ class CPUpdaterApp extends CPApplication
               (empty ? "Welcome to inSCALE. Run this to load the questionnaire."
                      : "Get the latest questionnaires.") +
                      " Current version: " + m.getAppProperty("MIDlet-Jar-SHA1"),
-              "{update}{exit}");
+        "{update}{exit}");
     }
 }
 
@@ -1460,6 +1451,7 @@ class PendingMessage
         try
         {
             Vector penders  = PendingMessage.getPendingMessages();
+            StoreManager.write("pending", "\0");
             for(int notI = 0; notI < penders.size(); ++notI)
             {
                 PendingMessage pender = (PendingMessage) penders.elementAt(notI);
@@ -1475,20 +1467,34 @@ class PendingMessage
                         {
                             TextMessage tm = (TextMessage) msgc.newMessage(MessageConnection.TEXT_MESSAGE);
                             tm.setPayloadText(pender.getMessage());
-                            msgc.send(tm);
+                            try
+                            {
+                                msgc.send(tm);
+                            }
+                            catch(IOException ioe)
+                            {
+                                PendingMessage.recordPendingMessage(pender);
+                            }
                         }
                     }
+                    if(am.length < 1)
+                    {
+                        PendingMessage.recordPendingMessage(pender);
+                    }
+                }
+                else
+                {
+                    PendingMessage.recordPendingMessage(pender);
                 }
             }
-            StoreManager.write("pending", "\0");
             return true;
-        }
+        }/*
         catch(IOException rse)
         {
             rse.printStackTrace();
             Alert alt = new Alert("Failed", rse.getMessage(), null, AlertType.ERROR);
             Display.getDisplay(mama).setCurrent(alt, prev);
-        }
+        }*/
         catch(RecordStoreException rse)
         {
             rse.printStackTrace();
@@ -1624,7 +1630,7 @@ class CPFrontPage extends List implements CommandListener
         {
             /*InitialPage init = new InitialPage(mama, this);
             Display.getDisplay(mama).setCurrent(init);*/
-            CounterPage counter = new CounterPage("Breathing Rate", this, mama);
+            CounterPage counter = new CounterPage("Breathing Rate", this, mama, false);
             Display.getDisplay(mama).setCurrent(counter);
         }
         else if(c == pend)
