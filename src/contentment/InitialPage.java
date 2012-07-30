@@ -55,7 +55,15 @@ class ResultPage extends Form implements CommandListener, Runnable
             curd.vibrate(5000);
             ply.start();
         }
-        catch(Exception e){}
+        catch(Exception e)
+        {
+            try
+            {
+                ply.close();
+                ins.close();
+            }
+            catch(Exception er){}
+        }
     }
 
     public void commandAction(Command c, Displayable d)

@@ -465,19 +465,19 @@ class CPProgram implements CommandListener
     private CPServices serv;
     private Form disp;
     private int notI = 0, nxt = 0, lst = 0;
-    private Command exit, advc;
-    private StringBuffer rez;
+    private Command exit, advc, bck1;
+    //  private StringBuffer rez;
     private Runnable updater;
     private CPProgram enfin;
     private StringCollector collector;
     private FaultHandler onfault;
     private Calendar cld;
-    private boolean nosend;
+    private boolean nosend, neeradded;
     private Vector steps;
 
     private class Step
     {
-        private String before, opcode, after;
+        private String before, opcode, after, result;
 
         public void setBefore(String b)
         {
@@ -489,16 +489,28 @@ class CPProgram implements CommandListener
             after = a;
         }
 
+        public String getOpcode()
+        {
+            return opcode;
+        }
+
         public void setOpcode(String o)
         {
             opcode = o;
         }
 
-        public String result(String answer)
+        public void setResult(String r)
         {
-            return before + answer + after;
+            result = r;
+        }
+
+        public String result()
+        {
+            return before + result + after;
         }
     }
+
+    private Step current = null;
 
     public CPProgram(String p, MIDlet m, CPPublisher q, String n, CPServices s)
     {
@@ -510,6 +522,7 @@ class CPProgram implements CommandListener
         cld     = Calendar.getInstance();
         nosend  = false;
         steps   = new Vector(30);
+        neeradded = true;
         cld.setTime(new Date());
     }
 
@@ -528,32 +541,46 @@ class CPProgram implements CommandListener
             int kas = program.indexOf("}", kad + 1);
             s.setOpcode(program.substring(kad + 1, kas));
             int kal = program.indexOf("{", kas);
-            if(kal != -1)
+            if(kal == -1)
             {
                 s.setAfter(program.substring(kas));
                 crawl = kas;
             }
             else
             {
-                s.setAfter(program.substring(kas, kal));
+                s.setAfter(program.substring(kas + 1, kal));
                 crawl = kal;
             }
+            steps.addElement(s);
         }
+    }
+
+    public String collectStepResults()
+    {
+        StringBuffer sb = new StringBuffer(30);
+        for(int mer = 0; mer < steps.size(); ++mer)
+        {
+            sb.append(((Step) steps.elementAt(mer)).result());
+        }
+        return sb.toString();
     }
 
     public void run(Displayable d, Runnable u, FaultHandler onf)
     {
         parseProgramSteps();
         onfault = onf;
-        rez = new StringBuffer("");
+        //  rez = new StringBuffer("");
         after = d;
         updater = u;
         disp = new Form(name);
         disp.setCommandListener(this);
         exit = new Command("Exit", Command.EXIT, 0);
         advc = new Command("OK", Command.OK, 0);
+        bck1 = new Command("Back", Command.BACK, 1);
         disp.addCommand(exit);
         disp.addCommand(advc);
+        disp.addCommand(bck1);
+        neeradded = false;
         Display.getDisplay(mama).setCurrent(disp);
         commandAction(advc, disp);
     }
@@ -580,6 +607,20 @@ class CPProgram implements CommandListener
 
     public void commandActionHandler(Command c, Displayable d) throws SegmentationFaultEtc
     {
+        if(notI == 0)
+        {
+            disp.removeCommand(bck1);
+            neeradded = true;
+        }
+        else
+        {
+            if(neeradded)
+            {
+                disp.addCommand(bck1);
+                neeradded = false;
+            }
+        }
+        
         if(d != disp)
         {
             Display.getDisplay(mama).setCurrent(disp);
@@ -588,13 +629,24 @@ class CPProgram implements CommandListener
         {
             Display.getDisplay(mama).setCurrent(after);
         }
+        else if(c == bck1)
+        {
+            if(notI > 0)
+            {
+                notI--;
+                collector = null;
+            }
+            commandAction(advc, d);
+            return;
+        }
         else if(c == advc)
         {
-            if(collector != null)
+            if(collector != null && current != null)
             {
                 try
                 {
-                    rez.append(collector.collect());
+                    //  rez.append(collector.collect());
+                    current.setResult(collector.collect());
                     collector = null;
                 }
                 catch(BadCollectionException bce)
@@ -605,7 +657,8 @@ class CPProgram implements CommandListener
                     return;
                 }
             }
-            if(notI >= program.length())
+            //  if(notI >= program.length())
+            if(notI >= steps.size())
             {
                 if(! nosend)
                 {
@@ -613,10 +666,11 @@ class CPProgram implements CommandListener
                     if(msgc != null)
                     {
                         final TextMessage tm = (TextMessage) msgc.newMessage(MessageConnection.TEXT_MESSAGE);
-                        final String rezstr  = rez.toString();
+                        //  final String rezstr  = rez.toString();
+                        final String rezstr  = collectStepResults();
                         tm.setPayloadText(rezstr);
                         //  final Alert sdg = new Alert("Sending message in the background ...", rez.toString(), null, AlertType.ERROR);
-                        final Alert sdg = new Alert("Added to pending messages ...", rez.toString(), null, AlertType.ERROR);
+                        final Alert sdg = new Alert("Added to pending messages ...", rezstr, null, AlertType.ERROR);
                         Thread bg = new Thread(new Runnable()
                         {
                             public void run()
@@ -641,7 +695,6 @@ class CPProgram implements CommandListener
                                     catch(Exception ioe)
                                     {
                                         ioe.printStackTrace();
-                                        System.err.println(ioe.getMessage());
                                         Alert sht = new Alert("Failed to Send Message", ioe.getMessage(), null, AlertType.ERROR);
                                         Display.getDisplay(mama).setCurrent(sht,
                                                 Display.getDisplay(mama).getCurrent());
@@ -658,7 +711,6 @@ class CPProgram implements CommandListener
                                     catch(RecordStoreException rse)
                                     {
                                         rse.printStackTrace();
-                                        System.err.println(rse.getMessage());
                                         Alert sht = new Alert("Failed to Store Message", rse.getMessage(), null, AlertType.ERROR);
                                         Display.getDisplay(mama).setCurrent(sht, after);
                                     }
@@ -673,7 +725,7 @@ class CPProgram implements CommandListener
             }
             else
             {
-                nxt = program.indexOf("{", notI);
+                /*nxt = program.indexOf("{", notI);
                 if(nxt == -1)
                 {
                     rez.append(program.substring(notI));
@@ -684,9 +736,13 @@ class CPProgram implements CommandListener
                 rez.append(program.substring(notI, nxt));
                 lst = program.indexOf("}", nxt + 1);
                 String opc = program.substring(nxt + 1, lst);
+                */
+                current = (Step) steps.elementAt(notI);
+                String opc = current.getOpcode();
                 if(opc.equals("exit"))
                 {
-                    notI = program.length();
+                    //  notI = program.length();
+                    notI = steps.size();
                     nosend = true;
                     commandAction(c, d);
                     return;
@@ -702,7 +758,9 @@ class CPProgram implements CommandListener
                         }
                     };
                     Display.getDisplay(mama).setCurrent(counter);
-                    notI = lst + 1;
+                    //  notI = lst + 1;
+                    //  commandActionHandler(c, d);
+                    ++notI;
                     commandAction(c, d);
                 }
                 else if(opc.equals("20minute"))
@@ -717,7 +775,8 @@ class CPProgram implements CommandListener
                         }
                     };
                     Display.getDisplay(mama).setCurrent(counter);
-                    notI = lst + 1;
+                    //  notI = lst + 1;
+                    ++notI;
                     commandAction(c, d);
                 }
                 else if(opc.equals("vhtcode"))
@@ -742,7 +801,8 @@ class CPProgram implements CommandListener
                             return Long.toString(new Date().getTime(), 16);
                         }
                     };
-                    notI = lst + 1;
+                    //  notI = lst + 1;
+                    ++notI;
                     commandAction(c, d);
                 }
                 else if(opc.equals("update"))
@@ -844,7 +904,8 @@ class CPProgram implements CommandListener
                             }
                         };
                         Display.getDisplay(mama).setCurrent(counter);
-                        notI = lst + 1;
+                        //  notI = lst + 1;
+                        ++notI;
                         commandAction(c, d);
                     }
                     else if(cmd.equals("year"))
@@ -1188,7 +1249,7 @@ class CPUpdaterApp extends CPApplication
               (empty ? "Welcome to inSCALE. Run this to load the questionnaire."
                      : "Get the latest questionnaires.") +
                      " Current version: " + m.getAppProperty("MIDlet-Jar-SHA1"),
-        "{countdown 15 RDT Timer}{show Sleek, eh?}{update}{exit}");
+        "{update}{exit}");
     }
 }
 
