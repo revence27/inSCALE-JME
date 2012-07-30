@@ -25,10 +25,10 @@ class ResultPage extends Form implements CommandListener, Runnable
     InputStream ins;
     Player      ply;
 
-    public ResultPage(String t, Displayable d, MIDlet m, int cmpt)
+    public ResultPage(String t, Displayable d, MIDlet m, int cmpt, boolean auto)
     {
         super(t);
-        disp = new StringItem("", t + ": " + Integer.toString(cmpt) + " per minute.");
+        disp = new StringItem("", t + ": " + (auto ? "please check the results." : Integer.toString(cmpt) + " per minute."));
         mama = m;
         prev = d;
         don  = new Command("Done", Command.OK | Command.EXIT, 0);
@@ -124,7 +124,8 @@ class CounterPage extends Form implements CommandListener, Runnable
             {
                 air = true;
                 removeCommand(stt);
-                addCommand(inc);
+                if(! automated)
+                    addCommand(inc);
                 thd = new Thread(this);
                 thd.start();
                 this.increment();
@@ -164,7 +165,7 @@ class CounterPage extends Form implements CommandListener, Runnable
 
     void nextScreen()
     {
-        rslt = new ResultPage(ttl, prev, mama, cmpt);
+        rslt = new ResultPage(ttl, prev, mama, cmpt, automated);
         Display.getDisplay(mama).setCurrent(rslt);
     }
 
@@ -179,7 +180,7 @@ class CounterPage extends Form implements CommandListener, Runnable
 
     String timeDescription(int seconds)
     {
-        int mins = seconds % 60;
+        int mins = seconds / 60;
         int secs = seconds - (mins * 60);
         //  if(mins < 1) return Integer.toString(secs) + " second" + (secs == 1 ? "s" : "");
         //  return Integer.toString(mins) + " minute" + (mins == 1 ? "" : "s") + " and " + Integer.toString(seconds) + " second" + (secs == 1 ? "s" : "");

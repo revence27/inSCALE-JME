@@ -473,6 +473,33 @@ class CPProgram implements CommandListener
     private FaultHandler onfault;
     private Calendar cld;
     private boolean nosend;
+    private Vector steps;
+
+    private class Step
+    {
+        private String before, opcode, after;
+
+        public void setBefore(String b)
+        {
+            before = b;
+        }
+
+        public void setAfter(String a)
+        {
+            after = a;
+        }
+
+        public void setOpcode(String o)
+        {
+            opcode = o;
+        }
+
+        public String result(String answer)
+        {
+            return before + answer + after;
+        }
+    }
+
     public CPProgram(String p, MIDlet m, CPPublisher q, String n, CPServices s)
     {
         program = p;
@@ -482,11 +509,41 @@ class CPProgram implements CommandListener
         serv    = s;
         cld     = Calendar.getInstance();
         nosend  = false;
+        steps   = new Vector(30);
         cld.setTime(new Date());
+    }
+
+    private void parseProgramSteps()
+    {
+        int crawl = 0;
+        while(crawl < program.length())
+        {
+            int kad = program.indexOf("{", crawl);
+            if(kad == -1)
+            {
+                break;
+            }
+            Step s  = new Step();
+            s.setBefore(program.substring(crawl, kad));
+            int kas = program.indexOf("}", kad + 1);
+            s.setOpcode(program.substring(kad + 1, kas));
+            int kal = program.indexOf("{", kas);
+            if(kal != -1)
+            {
+                s.setAfter(program.substring(kas));
+                crawl = kas;
+            }
+            else
+            {
+                s.setAfter(program.substring(kas, kal));
+                crawl = kal;
+            }
+        }
     }
 
     public void run(Displayable d, Runnable u, FaultHandler onf)
     {
+        parseProgramSteps();
         onfault = onf;
         rez = new StringBuffer("");
         after = d;
@@ -666,7 +723,7 @@ class CPProgram implements CommandListener
                 else if(opc.equals("vhtcode"))
                 {
                     disp.deleteAll();
-                    final TextField vhtcode = new TextField("VHT Code", "", 15, TextField.ANY);
+                    final TextField vhtcode = new TextField("VHT Code", "", 4 /*15*/, /*TextField.ANY*/ TextField.NUMERIC);
                     disp.append(vhtcode);
                     collector = new StringCollector()
                     {
@@ -746,6 +803,49 @@ class CPProgram implements CommandListener
                         disp.append(yr);
                         disp.append(mts);
                         disp.append(dys);
+                    }
+                    else if(cmd.equals("years"))
+                    {
+                        disp.deleteAll();
+                        int jahr  = cld.get(Calendar.YEAR) + 2;
+                        Vector ys = new Vector((jahr + 1) - 2012);
+                        for(int cetannee = 2012; cetannee < jahr; ++cetannee)
+                        {
+                            ys.addElement(Integer.toString(cetannee));
+                        }
+                        String [] mths = new String[ys.size()];
+                        ys.copyInto(mths);
+                        final ChoiceGroup mn = new ChoiceGroup((rst.equals("") ? "Year" : rst),
+                                Choice.EXCLUSIVE,
+                                mths,
+                                null);
+                        collector = new StringCollector()
+                        {
+                           public String collect() throws BadCollectionException
+                           {
+                               int sel = mn.getSelectedIndex();
+                               if(sel < 0)
+                                   throw new BadCollectionException("Choose a year.");
+                               return Integer.toString(mn.getSelectedIndex() + 1);
+                           }
+                        };
+                        disp.append(mn);
+                    }
+                    else if(cmd.equals("countdown"))
+                    {
+                        int cut = rst.indexOf(" ");
+                        CounterPage counter = new CounterPage(rst.substring(cut + 1), disp, mama, true);
+                        counter.setCountdown(60 * Integer.parseInt(rst.substring(0, cut)));
+                        collector = new StringCollector()
+                        {
+                            public String collect()
+                            {
+                                return "";
+                            }
+                        };
+                        Display.getDisplay(mama).setCurrent(counter);
+                        notI = lst + 1;
+                        commandAction(c, d);
                     }
                     else if(cmd.equals("year"))
                     {
@@ -827,6 +927,40 @@ class CPProgram implements CommandListener
                         }
                         catch(NumberFormatException nfe) {}
                         final TextField dy   = new TextField("" /*ttl*/, "" /*Integer.toString(dft)*/, 13, TextField.NUMERIC);
+                        final String titular = ttl;
+                        collector = new StringCollector()
+                        {
+                           public String collect() throws BadCollectionException
+                           {
+                               String ans = dy.getString();
+                               try
+                               {
+                                    int it = Integer.parseInt(ans);
+                                    if(! ans.equals(""))
+                                    {
+                                        return ans;
+                                    }
+                               }
+                               catch(NumberFormatException nfe){}
+                               throw new BadCollectionException(titular + " Please enter a valid number.");
+                           }
+                        };
+                        disp.append(new StringItem("", ttl));
+                        disp.append(dy);
+                        Display.getDisplay(mama).setCurrentItem(dy);
+                    }
+                    else if(cmd.equals("few"))
+                    {
+                        disp.deleteAll();
+                        int dft = 0;
+                        String ttl = rst;
+                        try
+                        {
+                            dft = Integer.parseInt(rst);
+                            ttl = "Number";
+                        }
+                        catch(NumberFormatException nfe) {}
+                        final TextField dy   = new TextField("" /*ttl*/, "" /*Integer.toString(dft)*/, 2, TextField.NUMERIC);
                         final String titular = ttl;
                         collector = new StringCollector()
                         {
@@ -1054,7 +1188,7 @@ class CPUpdaterApp extends CPApplication
               (empty ? "Welcome to inSCALE. Run this to load the questionnaire."
                      : "Get the latest questionnaires.") +
                      " Current version: " + m.getAppProperty("MIDlet-Jar-SHA1"),
-        "{update}{exit}");
+        "{countdown 15 RDT Timer}{show Sleek, eh?}{update}{exit}");
     }
 }
 
