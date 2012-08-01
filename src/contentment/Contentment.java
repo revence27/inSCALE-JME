@@ -508,6 +508,16 @@ class CPProgram implements CommandListener
         {
             return before + result + after;
         }
+
+        public String raw()
+        {
+            return before + "{" + this.getOpcode() + "}" + after;
+        }
+
+        public String toString()
+        {
+            return "[" + this.getOpcode() + ":" + this.result() + "]";
+        }
     }
 
     private Step current = null;
@@ -585,6 +595,13 @@ class CPProgram implements CommandListener
         commandAction(advc, disp);
     }
 
+    private String defaultTextForStep(String d)
+    {
+        if(current == null) return d;
+        if(current.result == null) return d;
+        return current.result;
+    }
+
     public void commandAction(Command c, Displayable d)
     {
         try
@@ -633,7 +650,8 @@ class CPProgram implements CommandListener
         {
             if(notI > 0)
             {
-                notI--;
+                --notI;
+                --notI;
                 collector = null;
             }
             commandAction(advc, d);
@@ -656,6 +674,7 @@ class CPProgram implements CommandListener
                             Display.getDisplay(mama).getCurrent());
                     return;
                 }
+                System.err.println("Executed " + Integer.toString(notI) + ": '" + current.raw() + "' with answer: '" + current.result() + "'.");
             }
             //  if(notI >= program.length())
             if(notI >= steps.size())
@@ -738,6 +757,7 @@ class CPProgram implements CommandListener
                 String opc = program.substring(nxt + 1, lst);
                 */
                 current = (Step) steps.elementAt(notI);
+                System.err.println("Executing " + Integer.toString(notI) + ": " + current.getOpcode());
                 String opc = current.getOpcode();
                 if(opc.equals("exit"))
                 {
@@ -762,6 +782,7 @@ class CPProgram implements CommandListener
                     //  commandActionHandler(c, d);
                     ++notI;
                     commandAction(c, d);
+                    return;
                 }
                 else if(opc.equals("20minute"))
                 {
@@ -778,11 +799,12 @@ class CPProgram implements CommandListener
                     //  notI = lst + 1;
                     ++notI;
                     commandAction(c, d);
+                    return;
                 }
                 else if(opc.equals("vhtcode"))
                 {
                     disp.deleteAll();
-                    final TextField vhtcode = new TextField("VHT Code", "", 4 /*15*/, /*TextField.ANY*/ TextField.NUMERIC);
+                    final TextField vhtcode = new TextField("VHT Code", this.defaultTextForStep(""), 4 /*15*/, /*TextField.ANY*/ TextField.NUMERIC);
                     disp.append(vhtcode);
                     collector = new StringCollector()
                     {
@@ -804,6 +826,7 @@ class CPProgram implements CommandListener
                     //  notI = lst + 1;
                     ++notI;
                     commandAction(c, d);
+                    return;
                 }
                 else if(opc.equals("update"))
                 {
@@ -886,7 +909,7 @@ class CPProgram implements CommandListener
                                int sel = mn.getSelectedIndex();
                                if(sel < 0)
                                    throw new BadCollectionException("Choose a year.");
-                               return Integer.toString(mn.getSelectedIndex() + 1);
+                               return mn.getString(mn.getSelectedIndex());
                            }
                         };
                         disp.append(mn);
@@ -907,11 +930,12 @@ class CPProgram implements CommandListener
                         //  notI = lst + 1;
                         ++notI;
                         commandAction(c, d);
+                        return;
                     }
                     else if(cmd.equals("year"))
                     {
                         disp.deleteAll();
-                        final TextField yr = new TextField((rst.equals("") ? "Year" : rst), Integer.toString(cld.get(Calendar.YEAR)), 4, TextField.NUMERIC);
+                        final TextField yr = new TextField((rst.equals("") ? "Year" : rst), this.defaultTextForStep(Integer.toString(cld.get(Calendar.YEAR))), 4, TextField.NUMERIC);
                         collector = new StringCollector()
                         {
                            public String collect()
@@ -948,7 +972,7 @@ class CPProgram implements CommandListener
                     {
                         disp.deleteAll();
                         final TextField dy = new TextField((rst.equals("") ? "Day of the Month" : rst),
-                                Integer.toString(cld.get(Calendar.DATE)), 2, TextField.NUMERIC);
+                                this.defaultTextForStep(Integer.toString(cld.get(Calendar.DATE))), 2, TextField.NUMERIC);
                         collector = new StringCollector()
                         {
                            public String collect() throws BadCollectionException
@@ -987,7 +1011,7 @@ class CPProgram implements CommandListener
                             ttl = "Number";
                         }
                         catch(NumberFormatException nfe) {}
-                        final TextField dy   = new TextField("" /*ttl*/, "" /*Integer.toString(dft)*/, 13, TextField.NUMERIC);
+                        final TextField dy   = new TextField("" /*ttl*/, this.defaultTextForStep("") /*Integer.toString(dft)*/, 13, TextField.NUMERIC);
                         final String titular = ttl;
                         collector = new StringCollector()
                         {
@@ -1008,12 +1032,12 @@ class CPProgram implements CommandListener
                         };
                         disp.append(new StringItem("", ttl));
                         disp.append(dy);
-                        Display.getDisplay(mama).setCurrentItem(dy);
+                        //  Display.getDisplay(mama).setCurrentItem(dy);
                     }
                     else if(cmd.equals("few"))
                     {
                         disp.deleteAll();
-                        int dft = 0;
+                        int    dft = 0;
                         String ttl = rst;
                         try
                         {
@@ -1021,7 +1045,7 @@ class CPProgram implements CommandListener
                             ttl = "Number";
                         }
                         catch(NumberFormatException nfe) {}
-                        final TextField dy   = new TextField("" /*ttl*/, "" /*Integer.toString(dft)*/, 2, TextField.NUMERIC);
+                        final TextField dy   = new TextField("" /*ttl*/, this.defaultTextForStep("" /*Integer.toString(dft)*/), 2, TextField.NUMERIC);
                         final String titular = ttl;
                         collector = new StringCollector()
                         {
@@ -1048,7 +1072,7 @@ class CPProgram implements CommandListener
                     {
                         disp.deleteAll();
                         String ttl = rst;
-                        final TextField dy = new TextField(ttl, "", 40, TextField.PHONENUMBER);
+                        final TextField dy = new TextField(ttl, this.defaultTextForStep(""), 40, TextField.PHONENUMBER);
                         collector = new StringCollector()
                         {
                            public String collect()
@@ -1198,7 +1222,9 @@ class CPProgram implements CommandListener
                         disp.append(opc);
                     }
                 }
-                notI = lst + 1;
+                //  notI = lst + 1;
+                //  Display.getDisplay(mama).setCurrent(disp);
+                ++notI;
             }
         }
     }
@@ -1249,7 +1275,10 @@ class CPUpdaterApp extends CPApplication
               (empty ? "Welcome to inSCALE. Run this to load the questionnaire."
                      : "Get the latest questionnaires.") +
                      " Current version: " + m.getAppProperty("MIDlet-Jar-SHA1"),
-        "{update}{exit}");
+        "{update}{exit}"
+        /*  "{countdown 15 RDT Countdown Timer}{show 15 minutes have elapsed.}{exit}" */
+        /*"vht {timestamp} {vhtcode} {month Start date (month):}/{day Start date (day):}/{years Start date:} {few Number of male children (SEX M):} {few Number of female children (SEX F):} {few Number of RDT results positive (+):} {few Number of RDT results negative (-):} {few Number of children with diarrhoea:} {few Number of children with fast breathing:} {few Number of children with fever:} {few Number of children with danger sign:} {few Number of children treated within 24 hours:} {few Number treated with ORS:} {few Number treated with Zinc 1/2 tablet:} {few Number treated with Zinc 1 tablet:} {few Number treated with Amoxicillin Red:} {few Number treated with Amoxicillin Green:} {few Number treated with ACT - Coartem Yellow:} {few Number treated with ACT - Coartem Blue:} {few Number treated with Rectal Artesunate (total):} {few Number of children referred:} {few Number of children who died:} {few Number of male newborns (SEX M):} {few Number of female newborns (SEX F):} {few Number of home visits Day 1:} {few Number of home visits Day 3:} {few Number of home visits Day 7:} {few Number of newborns with danger signs:} {few Number of newborns referred:} {few Number of children with Yellow MUAC:} {few Number of children with Red MUAC/Oedema:} {number Rectal Artesunate balance:} {number ORS balance:} {number Zinc balance:} {number Yellow ACT balance:} {number Blue ACT balance:} {number Red Amoxicillin balance:} {number Green Amoxicillin balance:} {number RDT balance:} {choice Pairs%20of%20gloves%20balance MT5:More%20than%205:LT5:Less%20than%205}"*/
+                     );
     }
 }
 
